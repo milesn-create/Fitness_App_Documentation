@@ -156,57 +156,61 @@ ER-диаграмма базы данных представлена на рис
     status      & VARCHAR   & DEFAULT 'active' & Статус: active, cancelled             \\ \hline
     created\_at & TIMESTAMP & DEFAULT NOW()    & Время создания записи                 \\ \hline
 \end{longtable}
-
 \clearpage
 \subsection{Разработка макетов страниц}
 
-На этапе проектирования были разработаны макеты (Wireframe) ключевых страниц
-приложения, отражающие общую структуру интерфейса для каждой роли пользователя.
+На этапе проектирования были разработаны макеты (Wireframe) ключевых страниц приложения, отражающие общую структуру интерфейса для каждой роли пользователя. Макеты охватывают все основные сценарии взаимодействия: просмотр расписания, аутентификацию, работу в личном кабинете клиента, управление тренировками тренером и администрирование платформы.
 
-\begin{figure}[ht!]
-	\centering
-	\includegraphics[width=0.75\textwidth, height=0.42\textheight, keepaspectratio]{images/wireframe_schedule}
-	\caption{Макет страницы расписания тренировок}
-	\label{fig:wf_schedule}
+Макет страницы расписания (рисунок~\ref{fig:wf_schedule}) представляет главную публичную страницу приложения, доступную без авторизации. В верхней части расположена навигационная панель с логотипом, ссылками на разделы сайта и кнопками входа и регистрации. Основная область содержит фильтр по дате и тренеру, а также карточки тренировок с фотографией, названием, временем проведения, именем тренера и текущим количеством свободных мест. Каждая карточка содержит кнопку записи, доступную авторизованному клиенту.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.75\textwidth]{images/wireframe_schedule}
+    \caption{Макет страницы расписания тренировок}
+    \label{fig:wf_schedule}
 \end{figure}
-
-\begin{figure}[ht!]
-	\centering
-	\includegraphics[width=0.75\textwidth, height=0.42\textheight, keepaspectratio]{images/wireframe_login}
-	\caption{Макет страницы входа в аккаунт}
-	\label{fig:wf_login}
-\end{figure}
-
 \clearpage
+Макет страницы входа (рисунок~\ref{fig:wf_login}) реализует форму аутентификации, центрированную на странице. Форма содержит поля ввода email и пароля, кнопку подтверждения, ссылку на восстановление пароля и переход к странице регистрации. В верхней части страницы расположен переключатель между вкладками «Войти» и «Регистрация», обеспечивающий навигацию между двумя формами аутентификации.
 
-\begin{figure}[ht!]
-	\centering
-	\includegraphics[width=0.75\textwidth, height=0.42\textheight, keepaspectratio]{images/wireframe_register}
-	\caption{Макет страницы регистрации}
-	\label{fig:wf_register}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.75\textwidth]{images/wireframe_login}
+    \caption{Макет страницы входа в аккаунт}
+    \label{fig:wf_login}
 \end{figure}
-
-\begin{figure}[ht!]
-	\centering
-	\includegraphics[width=0.75\textwidth, height=0.42\textheight, keepaspectratio]{images/wireframe_client}
-	\caption{Макет личного кабинета клиента}
-	\label{fig:wf_client}
-\end{figure}
-
 \clearpage
+Макет страницы регистрации (рисунок~\ref{fig:wf_register}) содержит форму создания нового аккаунта с полями имени, фамилии, email, пароля, подтверждения пароля и выбора роли (клиент или тренер). Форма также центрирована на странице и использует тот же переключатель вкладок, что и страница входа, что обеспечивает единообразие интерфейса аутентификации.
 
-\begin{figure}[ht!]
-	\centering
-	\includegraphics[width=0.75\textwidth, height=0.42\textheight, keepaspectratio]{images/wireframe_trainer}
-	\caption{Макет кабинета тренера}
-	\label{fig:wf_trainer}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.75\textwidth]{images/wireframe_register}
+    \caption{Макет страницы регистрации}
+    \label{fig:wf_register}
 \end{figure}
-
-\begin{figure}[ht!]
-	\centering
-	\includegraphics[width=0.75\textwidth, height=0.42\textheight, keepaspectratio]{images/wireframe_admin}
-	\caption{Макет панели администратора}
-	\label{fig:wf_admin}
-\end{figure}
-
 \clearpage
+Макет личного кабинета клиента (рисунок~\ref{fig:wf_client}) разделён на боковую панель и основную рабочую область. В боковой панели отображаются аватар, имя и роль пользователя, а также кнопки навигации: смена фото, мои записи, настройки и выход. Основная область включает сводку статистики (всего записей, предстоящих и посещённых), список активных и прошедших записей с возможностью отмены, а также форму редактирования профиля с полями имени, фамилии, email и телефона.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.75\textwidth]{images/wireframe_client}
+    \caption{Макет личного кабинета клиента}
+    \label{fig:wf_client}
+\end{figure}
+\clearpage
+Макет кабинета тренера (рисунок~\ref{fig:wf_trainer}) предоставляет интерфейс управления тренировками. Боковая панель содержит навигацию по разделам кабинета: мои тренировки, мои клиенты, и профиль. В основной области отображается список тренировок тренера с указанием даты, времени, заполненности (занятых и общего числа мест) и статуса. Для каждой тренировки доступны кнопки редактирования и удаления. Ниже расположена форма добавления новой тренировки с полями названия, даты и времени, длительности, вместимости, загрузки фотографии и описания.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.75\textwidth]{images/wireframe_trainer}
+    \caption{Макет кабинета тренера}
+    \label{fig:wf_trainer}
+\end{figure}
+\clearpage
+Макет панели администратора (рисунок~\ref{fig:wf_admin}) включает боковое меню с разделами: дашборд, тренировки, пользователи, расписание и статистика. На дашборде отображаются агрегированные показатели платформы: общее число записей, тренировок, тренеров и клиентов. В разделе управления пользователями представлена таблица со списком всех зарегистрированных пользователей, их email, ролью и датой регистрации. Администратор может добавлять новых пользователей, изменять их роли и удалять учётные записи.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.75\textwidth]{images/wireframe_admin}
+    \caption{Макет панели администратора}
+    \label{fig:wf_admin}
+\end{figure}

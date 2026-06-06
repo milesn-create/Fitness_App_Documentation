@@ -1,0 +1,312 @@
+
+\section*{Глава 3. Разработка веб-приложения}
+\addcontentsline{toc}{section}{Глава 3. Разработка веб-приложения}
+\stepcounter{section}
+
+\subsection{Разработка базовой структуры приложения и вёрстка шаблонов страниц}
+
+В соответствии с задачей~3.1, была реализована клиентская часть веб-приложения
+FitCenter на базе библиотеки \textbf{React.js} с использованием маршрутизатора
+\textbf{React Router}. Приложение организовано по компонентному принципу:
+общие элементы интерфейса вынесены в каталог \texttt{components/}, а страницы
+приложения --- в каталог \texttt{pages/}. Центральный файл \texttt{App.js}
+определяет маршруты и обеспечивает единую навигационную панель для всех
+разделов сайта.
+
+Для разграничения доступа к страницам реализован компонент-обёртка
+\texttt{PrivateRoute}, который проверяет наличие авторизованного пользователя
+и соответствие его роли списку допустимых ролей. Публичными являются страницы
+расписания (\texttt{/}), входа и регистрации (\texttt{/login}, \texttt{/register}),
+а также информационные разделы «Тренеры» и «О нас». Личный кабинет клиента
+доступен по маршруту \texttt{/profile}, кабинет тренера --- по маршрутам
+\texttt{/trainer} и \texttt{/trainer/profile}, панель администратора --- по
+маршрутам \texttt{/admin/*}.
+
+Вёрстка страниц выполнена с использованием единого файла стилей
+\texttt{index.css}. Для отображения расписания применяется компонент карточки
+тренировки, который выводит фотографию, название, дату, время, имя тренера и
+количество свободных мест. Пример структуры карточки представлен
+в листинге~\ref{lst:workout_card}.
+\clearpage
+
+\begin{lstlisting}[caption={Фрагмент компонента карточки тренировки (Schedule.js, стр.~8--41)}, label={lst:workout_card}]
+function WorkoutCard({ workout, onBook, view }) {
+  const { user } = useAuth();
+  const active = workout.bookings?.filter(b => b.status === 'active') || [];
+  const spotsLeft = workout.capacity - active.length;
+  const isFull = spotsLeft <= 0;
+  const bookedCount = Math.min(active.length, workout.capacity);
+  const isBooked = active.some(b => String(b.user_id) === String(user?.id));
+  const isPast = new Date(workout.starts_at) < new Date();
+
+  const BookBtn = () => {
+    if (!user) {
+      return (
+        <button
+          className="btn btn-primary btn-full"
+          onClick={() => { window.location.href = '/login'; }}
+        >
+          Войти для записи
+        </button>
+      );
+    }
+    if (user.role !== 'client') return null;
+    return (
+      <button className="btn btn-primary btn-full"
+        disabled={isFull || isBooked || isPast}
+        onClick={() => onBook(workout.id)}>
+        {isBooked ? ' Вы записаны' : isFull ? 'Мест нет' : isPast ? 'Прошла' : 'Записаться'}
+      </button>
+    );
+  };
+\end{lstlisting}
+
+Серверная часть приложения реализована на языке \textbf{Go} с фреймворком
+\textbf{Gin} и организована в виде слоёв: маршруты (\texttt{transport/}),
+обработчики HTTP-запросов (\texttt{handlers/}), бизнес-логика (\texttt{service/})
+и модели данных (\texttt{models/}). Такое разделение упрощает сопровождение
+кода и соответствует архитектуре, описанной в разделе~2.
+
+\subsection{Реализация аутентификации, авторизации и системы ролей (клиент, тренер, администратор)}
+
+Согласно задаче~3.2, в системе реализована ролевая модель доступа с тремя
+ролями: \texttt{client} (клиент), \texttt{trainer} (тренер) и \texttt{admin}
+(администратор). Для обеспечения безопасности используется протокол
+\textbf{JWT} (JSON Web Token). При успешном входе или регистрации сервер
+генерирует токен, содержащий идентификатор пользователя (\texttt{user\_id}) и
+поле \texttt{role}, определяющее права доступа. Пример формирования токена
+представлен в листинге~\ref{lst:jwt}.
+
+\begin{lstlisting}[caption={Генерация JWT-токена при аутентификации (jwtutil.go, стр.~11--18)}, label={lst:jwt}]
+func GenerateToken(user models.User) (string, error) {
+	claims := jwt.MapClaims{
+		"user_id": user.ID.String(),
+		"role":    string(user.Role),
+		"exp":     time.Now().Add(72 * time.Hour).Unix(),
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString([]byte(os.Getenv("JWT_SECRET")))
+}
+\end{lstlisting}
+
+Пароли пользователей не хранятся в открытом виде: при регистрации и создании
+учётной записи администратором применяется алгоритм хеширования
+\textbf{bcrypt}. Самостоятельная регистрация в роли тренера запрещена ---
+тренеры создаются только администратором, что предотвращает несанкционированное
+получение расширенных прав.
+
+На стороне сервера реализованы middleware-функции \texttt{AuthMiddleware} и
+\texttt{RequireRole}. Первая проверяет наличие и корректность JWT-токена
+в заголовке \texttt{Authorization}, вторая --- соответствие роли пользователя
+требованиям конкретного маршрута. На клиенте контекст \texttt{AuthContext}
+сохраняет токен в \texttt{localStorage}, автоматически подставляет его в
+запросы к API и восстанавливает сессию при перезагрузке страницы.
+
+Маршруты API сгруппированы по уровню доступа (листинг~\ref{lst:routes}):
+публичные эндпоинты доступны без авторизации, защищённые --- после проверки
+токена, а операции управления тренировками и администрирования --- только
+для ролей \texttt{trainer} и \texttt{admin} соответственно.
+
+\begin{lstlisting}[caption={Группировка маршрутов API по ролям (routes.go, стр.~30--43)}, label={lst:routes}]
+	trainer := protected.Group("/")
+	trainer.Use(RequireRole("trainer", "admin"))
+	trainer.POST("/workouts", h.CreateWorkout)
+	trainer.PUT("/workouts/:id", h.UpdateWorkout)
+	trainer.DELETE("/workouts/:id", h.DeleteWorkout)
+	trainer.POST("/workouts/:id/photo", h.UploadWorkoutPhoto)
+
+	adminRoutes := protected.Group("/admin")
+	adminRoutes.Use(RequireRole("admin"))
+	adminRoutes.GET("/users", h.ListUsers)
+	adminRoutes.POST("/users", h.CreateUser)
+	adminRoutes.PUT("/users/:id", h.UpdateUser)
+	adminRoutes.DELETE("/users/:id", h.DeleteUser)
+	adminRoutes.GET("/stats", h.GetStats)
+\end{lstlisting}
+
+\subsection{Разработка CRUD-интерфейса для управления тренировками, расписанием и пользователями}
+
+В соответствии с задачей~3.3, реализован полный набор операций создания,
+чтения, обновления и удаления (CRUD) для ключевых сущностей системы.
+
+Управление тренировками доступно тренеру в кабинете \texttt{TrainerDashboard}
+и администратору в разделе «Тренировки» панели \texttt{AdminDashboard}.
+Тренер может создавать, редактировать и удалять только собственные занятия;
+администратор --- тренировки любого тренера. При создании и изменении
+тренировки проверяется, что дата и время начала не относятся к прошедшему
+периоду. Данные передаются на сервер через REST API (\texttt{POST /api/workouts},
+\texttt{PUT /api/workouts/:id}, \texttt{DELETE /api/workouts/:id}).
+
+Просмотр расписания реализован на странице \texttt{Schedule}. Клиент и
+неавторизованный пользователь могут фильтровать тренировки по дате и тренеру.
+Список формируется запросом \texttt{GET /api/workouts} с параметрами
+\texttt{date} и \texttt{trainer\_id}. Сервер возвращает тренировки вместе
+с данными о тренере и активных записях, что позволяет сразу отображать
+заполненность занятий.
+
+Управление пользователями реализовано в панели администратора. Администратор
+просматривает список всех учётных записей, создаёт новых пользователей с
+заданной ролью, изменяет имя, email и роль, а также удаляет пользователей.
+При удалении тренера каскадно удаляются связанные тренировки и записи на них,
+что обеспечивает целостность данных в базе.
+
+\subsection{Реализация онлайн-записи на тренировку с проверкой доступных мест и запретом двойной записи}
+
+Задача~3.4 реализована в сервисном слое backend-части методом \texttt{Book},
+который выполняет запись клиента на выбранную тренировку. Перед созданием
+записи система последовательно проверяет следующие условия:
+\begin{itemize}
+  \item тренировка существует и ещё не началась;
+  \item у клиента нет активной записи на эту же тренировку (запрет двойной записи);
+  \item количество активных записей меньше вместимости (\texttt{capacity});
+  \item новая тренировка не пересекается по времени с другими активными
+        записями клиента.
+\end{itemize}
+
+Логика проверок представлена в листинге~\ref{lst:book}.
+\clearpage
+
+\begin{lstlisting}[caption={Проверка условий при записи на тренировку (workoutService.go, стр.~194--224)}, label={lst:book}]
+	var existing models.Booking
+	if err := s.db.Where("user_id = ? AND workout_id = ? AND status = 'active'", userID, workoutID).
+		First(&existing).Error; err == nil {
+		return models.Booking{}, ErrAlreadyBooked
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return models.Booking{}, fmt.Errorf("check existing booking: %w", err)
+	}
+
+	var workout models.Workout
+	if err := s.db.Preload("Bookings", "status = 'active'").First(&workout, "id = ?", workoutID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return models.Booking{}, ErrNotFound
+		}
+		return models.Booking{}, fmt.Errorf("find workout: %w", err)
+	}
+	if util.WorkoutStarted(workout, time.Now()) {
+		return models.Booking{}, ErrWorkoutPast
+	}
+	if len(workout.Bookings) >= workout.Capacity {
+		return models.Booking{}, ErrNoAvailableSpots
+	}
+
+	var userBookings []models.Booking
+	if err := s.db.Preload("Workout").Where("user_id = ? AND status = 'active'", userID).Find(&userBookings).Error; err != nil {
+		return models.Booking{}, fmt.Errorf("list user bookings: %w", err)
+	}
+	for _, b := range userBookings {
+		if b.WorkoutID != workoutID && util.WorkoutsOverlap(workout, b.Workout) {
+			return models.Booking{}, ErrTimeConflict
+		}
+	}
+\end{lstlisting}
+
+На клиентской стороне кнопка «Записаться» на карточке тренировки блокируется,
+если мест нет, клиент уже записан или тренировка прошла. При успешной записи
+отправляется запрос \texttt{POST /api/workouts/:id/book}, после чего интерфейс
+обновляет состояние карточки без перезагрузки страницы. Тексты ошибок
+(«Мест нет», «Вы уже записаны», «Пересечение по времени») локализованы
+на русский язык в модуле \texttt{errors.js}.
+
+\subsection{Разработка личного кабинета с историей записей и возможностью отмены}
+
+Согласно задаче~3.5, для каждой роли пользователя реализован отдельный
+личный кабинет, соответствующий макетам, разработанным в разделе~2.4.
+
+\textbf{Кабинет клиента} (\texttt{Profile.js}) отображает сводную статистику:
+общее число записей, количество предстоящих и посещённых тренировок. В разделе
+«Мои записи» выводится история бронирований с указанием названия тренировки,
+даты, времени и статуса. Для активных записей на будущие занятия доступна
+кнопка отмены, которая вызывает эндпоинт \texttt{PUT /api/bookings/:id/cancel}
+и изменяет статус записи на \texttt{cancelled}. Клиент также может редактировать
+имя и загружать аватар.
+
+\textbf{Кабинет тренера} (\texttt{TrainerProfile.js}) содержит статистику
+по проведённым тренировкам и числу записавшихся клиентов, форму редактирования
+профиля с полями «О себе» и «Опыт», а также загрузку фотографии. Управление
+расписанием и отметка посещаемости выполняются на странице
+\texttt{TrainerDashboard}.
+
+\textbf{Кабинет администратора} (\texttt{AdminProfile.js} и
+\texttt{AdminDashboard.js}) объединяет доступ к статистике платформы,
+управлению пользователями и тренировками. Получение истории записей клиента
+реализовано методом \texttt{MyBookings}, который загружает связанные
+тренировки и данные тренера через механизм \texttt{Preload} ORM-библиотеки GORM.
+
+\subsection{Реализация агрегации данных (статистика посещаемости, загруженность тренеров)}
+
+В соответствии с задачей~3.6, на сервере реализован эндпоинт
+\texttt{GET /api/admin/stats}, формирующий агрегированные показатели
+работы фитнес-центра. Метод \texttt{GetStats} подсчитывает:
+\begin{itemize}
+  \item общее число активных записей (\texttt{total\_bookings});
+  \item количество тренировок в системе (\texttt{total\_workouts});
+  \item число тренеров (\texttt{total\_trainers}) и клиентов (\texttt{total\_clients});
+  \item загруженность каждого тренера --- количество его тренировок и записей
+        на них (\texttt{trainer\_load}).
+\end{itemize}
+
+Для расчёта загруженности тренеров используется SQL-запрос с группировкой
+и соединением таблиц \texttt{users}, \texttt{workouts} и \texttt{bookings}
+(листинг~\ref{lst:stats}). Результаты отображаются на дашборде администратора
+в виде карточек с ключевыми метриками и таблицы загруженности тренеров.
+
+\begin{lstlisting}[caption={SQL-запрос загруженности тренеров (adminService.go, стр.~159--169)}, label={lst:stats}]
+	if err := s.db.Raw(`
+		SELECT u.name as trainer_name,
+		       COUNT(DISTINCT w.id) as workouts,
+		       COUNT(DISTINCT b.id) as bookings
+		FROM users u
+		LEFT JOIN workouts w ON w.trainer_id = u.id
+		LEFT JOIN bookings b ON b.workout_id = w.id AND b.status = 'active'
+		WHERE u.role = 'trainer'
+		GROUP BY u.id, u.name
+		ORDER BY bookings DESC
+	`).Scan(&stats.TrainerLoad).Error; err != nil {
+\end{lstlisting}
+
+Дополнительно тренер в личном кабинете видит количество своих тренировок
+и уникальных записавшихся клиентов, рассчитанных на стороне клиента на основе
+полученного списка занятий.
+
+\subsection{Реализация загрузки файлов (аватар пользователя, фото тренировок)}
+
+Задача~3.7 реализована с разделением статических и динамически загружаемых
+файлов. Демонстрационные фотографии тренировок размещены в каталоге
+\texttt{frontend/public/uploads/workouts/} и отдаются веб-сервером Nginx
+напрямую при сборке frontend-контейнера. Файлы, загружаемые пользователями
+в процессе работы (аватары и фото тренировок), сохраняются на диске серверной
+части в каталоге \texttt{backend/uploads/} и доступны по URL \texttt{/uploads/...}.
+
+Загрузка аватара выполняется запросом \texttt{POST /api/profile/avatar}.
+Сервер сохраняет файл в каталог \texttt{uploads/avatars/}, генерируя уникальное
+имя на основе UUID, и записывает путь в поле \texttt{avatar} таблицы
+\texttt{users}. Загрузка фото тренировки доступна тренеру и администратору
+через эндпоинт \texttt{POST /api/workouts/:id/photo}; файл сохраняется
+в \texttt{uploads/workouts/}, а путь --- в поле \texttt{photo} таблицы
+\texttt{workouts}.
+
+Вспомогательная функция сохранения файла представлена в листинге~\ref{lst:upload}.
+
+\begin{lstlisting}[caption={Сохранение загруженного файла (upload.go, стр.~11--17)}, label={lst:upload}]
+func saveUploadedFile(file *multipart.FileHeader, dir string, c *gin.Context) (string, error) {
+	filename := uuid.New().String() + filepath.Ext(file.Filename)
+	if err := c.SaveUploadedFile(file, dir+"/"+filename); err != nil {
+		return "", err
+	}
+	return filename, nil
+}
+\end{lstlisting}
+
+Для раздачи файлов backend регистрирует статический маршрут
+\texttt{r.Static("/uploads", "./uploads")}. В production-окружении Nginx
+сначала ищет запрошенный файл среди статических ресурсов frontend, а при
+отсутствии --- проксирует запрос на backend, что обеспечивает корректную
+работу как демонстрационных, так и пользовательских изображений. Каталог
+\texttt{backend/uploads} монтируется как Docker-volume, поэтому загруженные
+файлы сохраняются при перезапуске контейнеров.
+
+Таким образом, в третьей главе описана практическая реализация всех задач
+раздела~3 плана работ: от базовой структуры интерфейса до загрузки файлов
+и формирования статистики. Разработанное приложение FitCenter развёртывается
+с помощью \textbf{Docker Compose} и включает три сервиса: frontend (Nginx +
+React), backend (Go + Gin) и СУБД PostgreSQL.
